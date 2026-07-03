@@ -1,0 +1,34 @@
+# <type>(<scope>): <subject>
+# |<----  Using a maximum of 50 characters  ---->|
+
+# --- BODY (explain WHY, not WHAT — imperative present tense) ---
+# |<----   Try to limit each line to 72 characters   ---->|
+
+# --- FOOTER (Breaking Changes / closes #issue) ---
+
+# ---------------------------------------------------------------------------
+# TYPE must be one of:
+#   feat     – new feature
+#   fix      – bug fix
+#   docs     – documentation only
+#   style    – formatting, missing semicolons, etc. (no logic change)
+#   refactor – code change that neither fixes a bug nor adds a feature
+#   test     – adding or correcting tests
+#   chore    – build process, tooling, maintenance
+#
+# SCOPE is optional — anything specifying the place of the change
+#   e.g. feat(deploy-vm): ...
+#
+# SUBJECT rules:
+#   - imperative, present tense: "add" not "added"/"adds"
+#   - no capitalised first letter
+#   - no dot (.) at the end
+#
+# BODY rules:
+#   - explain motivation and contrast with previous behaviour
+#   - imperative present tense
+#
+# FOOTER rules:
+#   - note Breaking Changes: "BREAKING CHANGE: <description>"
+#   - reference closed issues: "Closes #123"
+# ---------------------------------------------------------------------------
