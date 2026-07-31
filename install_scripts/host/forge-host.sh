@@ -125,6 +125,7 @@ autoinstall:
     - libvirt-clients
     - virt-manager
     - gimp
+    - vlc
     - tlp
     - gnupg2
     - pass
