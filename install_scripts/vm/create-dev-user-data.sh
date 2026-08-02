@@ -15,21 +15,91 @@ GIT_NAME=$(echo "$GIT_SECRETS" | grep "^username:" | cut -d' ' -f2-)
 GIT_EMAIL=$(echo "$GIT_SECRETS" | grep "^email:" | cut -d' ' -f2)
 
 SSH_PUB_KEY=$(pass show ssh/public-key | tr -d '\n')
+SSH_PRIV_KEY=$(pass show ssh/private-key)
 USERNAME=$(pass show host | grep "^username:" | cut -d' ' -f2-)
 
-# 2. Generate the configuration file with variables injected directly
-# (Unquoted EOF allows Bash to inject variables directly without needing sed)
-cat << EOF > "$OUTPUT_FILE"
-#cloud-config
+yaml_escape() {
+  local value=${1-}
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  printf '%s' "$value"
+}
+
+indent_lines() {
+  local prefix=$1
+  local content=$2
+  printf '%s\n' "$content" | sed "s/^/${prefix}/"
+}
+
+REPO_LIST='private-cloud-runbook dotfiles tabiri-website stacktriage brand-collateral the-black-box'
+REPO_LOOP_SNIPPET=$(cat <<EOF
+for repo in $REPO_LIST; do
+  target=/home/${USERNAME}/\$repo
+  if [ -d "\$target/.git" ]; then
+    :
+  else
+    echo "Cloning \$repo"
+    sudo -u ${USERNAME} env HOME=/home/${USERNAME} GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/${USERNAME}/.ssh/known_hosts' git clone "git@github.com:savco2000/\$repo.git" "\$target"
+  fi
+done
+EOF
+)
+
+build_shell_block() {
+  cat <<EOF
+    install -d -o ${USERNAME} -g ${USERNAME} -m 0755 /home/${USERNAME} /home/${USERNAME}/.ssh
+    if [ -d /etc/skel ]; then cp -a /etc/skel/. /home/${USERNAME}/; fi
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
+    chmod 700 /home/${USERNAME}/.ssh
+    cat > /home/${USERNAME}/.ssh/id_ed25519 <<'KEY_EOF'
+$(indent_lines '    ' "$SSH_PRIV_KEY")
+    KEY_EOF
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh/id_ed25519
+    chmod 600 /home/${USERNAME}/.ssh/id_ed25519
+    cat > /home/${USERNAME}/.ssh/id_ed25519.pub <<'KEY_EOF'
+$(indent_lines '    ' "$SSH_PUB_KEY")
+    KEY_EOF
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh/id_ed25519.pub
+    chmod 644 /home/${USERNAME}/.ssh/id_ed25519.pub
+    printf '%s\\n' '${SSH_PUB_KEY}' > /home/${USERNAME}/.ssh/authorized_keys
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh/authorized_keys
+    chmod 600 /home/${USERNAME}/.ssh/authorized_keys
+    touch /home/${USERNAME}/.ssh/known_hosts
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh/known_hosts
+    chmod 600 /home/${USERNAME}/.ssh/known_hosts
+    ssh-keyscan github.com >> /home/${USERNAME}/.ssh/known_hosts
+    cat > /home/${USERNAME}/.ssh/config <<'SSHCFG'
+    Host github.com
+      HostName github.com
+      User git
+      IdentityFile /home/${USERNAME}/.ssh/id_ed25519
+      IdentitiesOnly yes
+      StrictHostKeyChecking yes
+    SSHCFG
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh/config
+    chmod 600 /home/${USERNAME}/.ssh/config
+    install -d -o ${USERNAME} -g ${USERNAME} -m 0755 /home/${USERNAME}/repos
+$(indent_lines '    ' "$REPO_LOOP_SNIPPET")
+EOF
+}
+
+build_users_block() {
+  cat <<EOF
 users:
-  - name: $USERNAME
+  - name: ${USERNAME}
     groups: [sudo]
     shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL # Explicitly grant $USERNAME passwordless sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL # Explicitly grant ${USERNAME} passwordless sudo
     lock_passwd: true # 🔒 Locks password authentication entirely
     ssh_authorized_keys:
-      - $SSH_PUB_KEY
+      - ${SSH_PUB_KEY}
+    home: /home/${USERNAME}
+    shell: /bin/bash
+EOF
+}
 
+build_packages_block() {
+  cat <<EOF
 packages:
   - npm
   - docker.io
@@ -42,25 +112,56 @@ packages:
   - ncdu
   - byobu
   - xsel
-
-runcmd:
-  # 1. Adding the user to the docker group safely after package installation
-  - usermod -aG docker $USERNAME
-  
-  # 2. Configuring Git identity for $USERNAME
-  - [ sudo, -u, $USERNAME, git, config, --global, user.name, "$GIT_NAME" ]
-  - [ sudo, -u, $USERNAME, git, config, --global, user.email, "$GIT_EMAIL" ]
-  - [ sudo, -u, $USERNAME, git, config, --global, init.defaultBranch, main ]
-
-  # 3. Enable Byobu auto-launch on login for $USERNAME
-  - [ sudo, -u, $USERNAME, byobu-enable ]
-
-  # 4. Pre-seed GitHub SSH keys to prevent interactive authenticity prompts for $USERNAME
-  - [ sudo, -u, $USERNAME, bash, -c, 'ssh-keyscan github.com >> ~/.ssh/known_hosts' ]
-
-  # 5. Automatically clone core repositories into the user's home directory
-  - [ sudo, -u, $USERNAME, bash, -c, 'cd /home/$USERNAME && git clone git@github.com:savco2000/private-cloud-runbook.git' ]
-  - [ sudo, -u, $USERNAME, bash, -c, 'cd /home/$USERNAME && git clone git@github.com:savco2000/tabiri-website.git' ]
 EOF
+}
+
+build_write_files_block() {
+  cat <<EOF
+write_files:
+  - path: /home/${USERNAME}/.ssh/id_ed25519
+    owner: ${USERNAME}:${USERNAME}
+    permissions: '0600'
+    content: |
+$(indent_lines '      ' "$SSH_PRIV_KEY")
+  - path: /home/${USERNAME}/.ssh/id_ed25519.pub
+    owner: ${USERNAME}:${USERNAME}
+    permissions: '0644'
+    content: |
+$(indent_lines '      ' "$SSH_PUB_KEY")
+EOF
+}
+
+build_runcmd_block() {
+  cat <<EOF
+runcmd:
+  - usermod -aG docker ${USERNAME}
+
+  - |
+$(build_shell_block)
+
+  - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, git, config, --global, user.name, "$(yaml_escape "$GIT_NAME")" ]
+  - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, git, config, --global, user.email, "$(yaml_escape "$GIT_EMAIL")" ]
+  - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, git, config, --global, init.defaultBranch, main ]
+
+  - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, byobu-enable ]
+
+  - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, bash, -c, 'set -x; echo "SSH key files:"; ls -l /home/${USERNAME}/.ssh; echo "SSH public key:"; cat /home/${USERNAME}/.ssh/id_ed25519.pub; echo "SSH fingerprint:"; ssh-keygen -lf /home/${USERNAME}/.ssh/id_ed25519.pub; cd /home/${USERNAME} && for repo in private-cloud-runbook dotfiles tabiri-website stacktriage brand-collateral the-black-box; do target=/home/${USERNAME}/\$repo; if [ -d "\$target/.git" ]; then :; else echo "Cloning \$repo"; GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/${USERNAME}/.ssh/known_hosts" git clone "git@github.com:savco2000/\$repo.git" "\$target"; fi; done' ]
+EOF
+}
+
+write_cloud_init() {
+  cat > "$OUTPUT_FILE" <<EOF
+#cloud-config
+$(build_users_block)
+
+$(build_packages_block)
+
+$(build_write_files_block)
+
+$(build_runcmd_block)
+EOF
+}
+
+write_cloud_init
 
 echo "✨ VM user-data file successfully generated at $OUTPUT_FILE"
