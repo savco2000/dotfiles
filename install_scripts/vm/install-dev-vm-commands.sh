@@ -1,13 +1,13 @@
 #!/bin/bash
 # Target extraction tool for fresh host builds
-# Make executable: chmod +x get-vs-code-uris.sh
-# Usage: ./get-vs-code-uris.sh
+# Make executable: chmod +x install-dev-vm-commands.sh
+# Usage: ./install-dev-vm-commands.sh
 
 DB_PATH="$HOME/.config/Code/User/globalStorage/state.vscdb"
 BASHRC_PATH="$HOME/.bashrc"
 BACKUP_PATH="$HOME/.bashrc.bak"
-BEGIN_MARKER="# >>> DEV-VM COMMANDS (managed by get-vs-code-uris.sh) >>>"
-END_MARKER="# <<< DEV-VM COMMANDS (managed by get-vs-code-uris.sh) <<<"
+BEGIN_MARKER="# >>> DEV-VM COMMANDS (managed by install-dev-vm-commands.sh) >>>"
+END_MARKER="# <<< DEV-VM COMMANDS (managed by install-dev-vm-commands.sh) <<<"
 
 if [ ! -f "$DB_PATH" ]; then
     echo "❌ Error: VS Code storage database not found at $DB_PATH"
