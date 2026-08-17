@@ -1,15 +1,31 @@
 #!/bin/bash
 # Target extraction tool for fresh host builds
 # Make executable: chmod +x get-vs-code-uris.sh
-# Usage: sudo ./get-vs-code-uris.sh
+# Usage: ./get-vs-code-uris.sh
 
 DB_PATH="$HOME/.config/Code/User/globalStorage/state.vscdb"
+BASHRC_PATH="$HOME/.bashrc"
+BACKUP_PATH="$HOME/.bashrc.bak"
+BEGIN_MARKER="# >>> DEV-VM COMMANDS (managed by get-vs-code-uris.sh) >>>"
+END_MARKER="# <<< DEV-VM COMMANDS (managed by get-vs-code-uris.sh) <<<"
 
 if [ ! -f "$DB_PATH" ]; then
     echo "❌ Error: VS Code storage database not found at $DB_PATH"
     exit 1
 fi
 
+if [ ! -f "$BASHRC_PATH" ]; then
+    echo "❌ Error: Bash configuration not found at $BASHRC_PATH"
+    exit 1
+fi
+
+GENERATED_BLOCK=$(mktemp)
+UPDATED_BASHRC=$(mktemp)
+EXISTING_BLOCK=$(mktemp)
+trap 'rm -f "$GENERATED_BLOCK" "$UPDATED_BASHRC" "$EXISTING_BLOCK"' EXIT
+
+{
+echo "$BEGIN_MARKER"
 cat <<'EOF'
 # --- START DEV-VM ---
 alias dev-start='virsh start dev-vm'
@@ -86,3 +102,47 @@ strings "$DB_PATH" | grep -E -o "dev-container\+[0-9a-fA-F]+@ssh-remote\+dev-vm"
     echo "alias ${ALIAS_NAME}=${FUNCTION_NAME}"
     echo ''
 done
+echo "$END_MARKER"
+} > "$GENERATED_BLOCK"
+
+cp -p "$BASHRC_PATH" "$BACKUP_PATH"
+
+BEGIN_COUNT=$(grep -Fxc "$BEGIN_MARKER" "$BASHRC_PATH")
+END_COUNT=$(grep -Fxc "$END_MARKER" "$BASHRC_PATH")
+
+if [ "$BEGIN_COUNT" -eq 0 ] && [ "$END_COUNT" -eq 0 ]; then
+    if [ -s "$BASHRC_PATH" ] && [ -n "$(tail -c 1 "$BASHRC_PATH")" ]; then
+        printf '\n' >> "$BASHRC_PATH"
+    fi
+    cat "$GENERATED_BLOCK" >> "$BASHRC_PATH"
+    echo "✅ Dev VM commands appended to $BASHRC_PATH (backup: $BACKUP_PATH)"
+elif [ "$BEGIN_COUNT" -eq 1 ] && [ "$END_COUNT" -eq 1 ]; then
+    awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
+        $0 == begin { capture = 1 }
+        capture { print }
+        $0 == end { capture = 0 }
+    ' "$BASHRC_PATH" > "$EXISTING_BLOCK"
+
+    if cmp -s "$GENERATED_BLOCK" "$EXISTING_BLOCK"; then
+        echo "✅ Dev VM commands are already up to date in $BASHRC_PATH (backup: $BACKUP_PATH)"
+        exit 0
+    fi
+
+    awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" -v block="$GENERATED_BLOCK" '
+        $0 == begin {
+            while ((getline line < block) > 0) {
+                print line
+            }
+            close(block)
+            replace = 1
+            next
+        }
+        replace && $0 == end { replace = 0; next }
+        !replace { print }
+    ' "$BASHRC_PATH" > "$UPDATED_BASHRC"
+    cat "$UPDATED_BASHRC" > "$BASHRC_PATH"
+    echo "✅ Dev VM commands updated in $BASHRC_PATH (backup: $BACKUP_PATH)"
+else
+    echo "❌ Error: Managed Dev VM markers in $BASHRC_PATH are missing or duplicated."
+    exit 1
+fi
