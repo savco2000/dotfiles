@@ -1,7 +1,7 @@
 #!/bin/bash
 # Make executable: chmod +x deploy-vm.sh
 # Usage: sudo ./deploy-vm.sh <config.yaml | vm-name> [-m memory_mib] [-c vcpus] [-s disk_gib] [-d] [-f]
-# Default: 4096 MiB RAM, 4 vCPUs, 40 GiB Disk (Linked Clone)
+# Default: 4096 MiB RAM, 4 vCPUs, 100 GiB Disk (Linked Clone)
 
 # --- 1. Dynamic Variables & Defaults ---
 TARGET=$1
@@ -33,7 +33,7 @@ fi
 
 MEM=4096
 CPUS=4
-DISK=40
+DISK=100
 
 shift
 

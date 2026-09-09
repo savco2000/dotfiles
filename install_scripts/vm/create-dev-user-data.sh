@@ -31,7 +31,7 @@ indent_lines() {
   printf '%s\n' "$content" | sed "s/^/${prefix}/"
 }
 
-REPO_LIST='private-cloud-runbook dotfiles tabiri-website stacktriage brand-collateral the-black-box'
+REPO_LIST='private-cloud-runbook dotfiles tabiri-website tabiri-website-static stacktriage brand-collateral the-black-box'
 REPO_LOOP_SNIPPET=$(cat <<EOF
 for repo in $REPO_LIST; do
   target=/home/${USERNAME}/\$repo
@@ -101,13 +101,32 @@ EOF
 build_packages_block() {
   cat <<EOF
 packages:
+  - nodejs
   - npm
+  - build-essential
+  - python3
+  - python3-pip
+  - python3-venv
   - docker.io
   - docker-buildx
   - git
+  - git-lfs
+  - gh
+  - openssh-client
   - postgresql-client
+  - ca-certificates
   - curl
+  - wget
   - jq
+  - ripgrep
+  - fd-find
+  - shellcheck
+  - unzip
+  - zip
+  - rsync
+  - sqlite3
+  - tree
+  - nano
   - htop
   - ncdu
   - byobu
@@ -135,6 +154,10 @@ build_runcmd_block() {
   cat <<EOF
 runcmd:
   - usermod -aG docker ${USERNAME}
+
+  - [ npm, install, -g, --ignore-scripts, '@earendil-works/pi-coding-agent' ]
+  - [ ln, -sf, /usr/bin/fdfind, /usr/local/bin/fd ]
+  - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, pi, install, 'npm:planning-with-files' ]
 
   - |
 $(build_shell_block)
