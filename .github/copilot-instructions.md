@@ -33,19 +33,26 @@ Do not stage files or run any git commands until the user explicitly approves th
 
 If the user requests changes to the message, revise and present again. Repeat until approved.
 
-### 3. Stage and commit
+### 3. Commit staged changes
 
 Once approved:
 ```bash
-git add -A
 git commit -m "<header>" -m "<body>" -m "<footer>"
 ```
 Omit `-m "<body>"` or `-m "<footer>"` if those sections are empty.
 
+Commit only the changes the user has already staged. Do not stage additional
+files unless the user explicitly asks you to do so.
+
 ### 4. Push to remote
 
 ```bash
-git push origin main
+branch="$(git branch --show-current)"
+git push --set-upstream origin "$branch"
 ```
+
+Push the current local branch to the remote branch with the same name. If the
+remote branch does not exist, create it and configure the local branch to track
+it. Never push to a different branch unless the user explicitly requests it.
 
 Confirm to the user once the push succeeds.
