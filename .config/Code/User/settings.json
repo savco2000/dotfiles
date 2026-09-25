@@ -1,0 +1,30 @@
+{
+    "explorer.confirmDelete": false,
+    "chat.tools.terminal.autoApprove": {
+        "/^node --check assets/js/mobile-nav\\.js$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "git commit": true,
+        "git add": true,
+        "npm install": true,
+        "git push": true,
+        "git remote": true,
+        "/^git branch --show-current$/": true,
+        "/^git push --set-upstream origin\\b.*$/": true
+    },
+    "workbench.editor.empty.hint": "hidden",
+    "security.workspace.trust.untrustedFiles": "open",
+    "remote.autoForwardPortsSource": "hybrid",
+    "chat.tools.urls.autoApprove": {
+        "https://code.visualstudio.com": true,
+        "https://github.com/microsoft/vscode/wiki/*": true,
+        "https://raw.githubusercontent.com": {
+            "approveRequest": false,
+            "approveResponse": true
+        }
+    },
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    "window.restoreWindows": "none"
+}
