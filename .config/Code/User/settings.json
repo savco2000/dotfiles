@@ -26,5 +26,9 @@
     },
     "files.autoSave": "afterDelay",
     "files.autoSaveDelay": 1000,
-    "window.restoreWindows": "none"
+    "files.associations": {
+        "*.tmpl": "html"
+    },
+    "window.restoreWindows": "none",
+    "terminal.integrated.initialHint": false
 }
