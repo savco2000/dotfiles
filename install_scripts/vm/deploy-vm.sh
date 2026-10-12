@@ -158,6 +158,7 @@ Host $VM_NAME
   User devuser
   IdentityFile ~/.ssh/id_ed25519
   ForwardAgent yes
+  AddKeysToAgent yes
   IdentitiesOnly yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
@@ -167,6 +168,24 @@ EOF
 chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/.ssh/conf.d"
 chmod 700 "$REAL_HOME/.ssh/conf.d"
 chmod 600 "$REAL_HOME/.ssh/conf.d/$VM_NAME"
+
+# --- 10. Verify Git/SSH Plumbing ---
+# Catch a broken agent or unauthorised key now, rather than on the first `git push`.
+echo "🔐 Verifying GitHub SSH access inside $VM_NAME..."
+# Run as the invoking user so the authorised key (not root's) is used.
+VM_SSH="sudo -u $REAL_USER -H ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 devuser@$VM_IP"
+
+if $VM_SSH "bash -lc 'ssh-add -l'" >/dev/null 2>&1; then
+    echo "   ✅ ssh-agent is running with the deploy key loaded."
+else
+    echo "   ⚠️  No populated ssh-agent found. Dev Containers will not inherit a key."
+fi
+
+if $VM_SSH "ssh -o BatchMode=yes -T git@github.com 2>&1 | grep -q 'successfully authenticated'"; then
+    echo "   ✅ GitHub SSH authentication confirmed."
+else
+    echo "   ⚠️  GitHub SSH authentication failed. Check that the key is registered on GitHub."
+fi
 
 echo "------------------------------------------------"
 echo "✅ $VM_NAME is FULLY PROVISIONED and ready!"

@@ -41,7 +41,46 @@ for repo in $REPO_LIST; do
     echo "Cloning \$repo"
     sudo -u ${USERNAME} env HOME=/home/${USERNAME} GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/${USERNAME}/.ssh/known_hosts' git clone "git@github.com:savco2000/\$repo.git" "\$target"
   fi
+  # Normalise any pre-existing HTTPS origin so pushes never fall back to a credential helper
+  if [ -d "\$target/.git" ]; then
+    sudo -u ${USERNAME} env HOME=/home/${USERNAME} git -C "\$target" remote set-url origin "git@github.com:savco2000/\$repo.git"
+  fi
 done
+EOF
+)
+
+# systemd user unit keeping an ssh-agent alive for the lifetime of the VM, so that
+# VS Code Remote-SSH and Dev Containers always inherit a populated SSH_AUTH_SOCK.
+SSH_AGENT_UNIT=$(cat <<'EOF'
+[Unit]
+Description=SSH authentication agent for %u
+Documentation=man:ssh-agent(1)
+
+[Service]
+Type=simple
+Environment=SSH_AUTH_SOCK=%t/ssh-agent.socket
+ExecStartPre=-/bin/rm -f %t/ssh-agent.socket
+ExecStart=/usr/bin/ssh-agent -D -a %t/ssh-agent.socket
+ExecStartPost=-/bin/sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do [ -S %t/ssh-agent.socket ] && break; sleep 0.5; done; SSH_AUTH_SOCK=%t/ssh-agent.socket exec /usr/bin/ssh-add %h/.ssh/id_ed25519'
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+EOF
+)
+
+# Point shells at the managed agent, but never clobber a working forwarded agent.
+SSH_AGENT_PROFILE=$(cat <<'EOF'
+# Managed by create-dev-user-data.sh - keep an ssh-agent reachable in every shell.
+_managed_agent_sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
+if [ -z "${SSH_AUTH_SOCK:-}" ] || ! ssh-add -l >/dev/null 2>&1; then
+    if [ -S "$_managed_agent_sock" ]; then
+        SSH_AUTH_SOCK="$_managed_agent_sock"
+        export SSH_AUTH_SOCK
+    fi
+fi
+unset _managed_agent_sock
 EOF
 )
 
@@ -75,9 +114,23 @@ $(indent_lines '    ' "$SSH_PUB_KEY")
       IdentityFile /home/${USERNAME}/.ssh/id_ed25519
       IdentitiesOnly yes
       StrictHostKeyChecking yes
+      AddKeysToAgent yes
     SSHCFG
     chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh/config
     chmod 600 /home/${USERNAME}/.ssh/config
+    install -d -o ${USERNAME} -g ${USERNAME} -m 0755 /home/${USERNAME}/.config/systemd/user/default.target.wants
+    cat > /home/${USERNAME}/.config/systemd/user/ssh-agent.service <<'UNIT_EOF'
+$(indent_lines '    ' "$SSH_AGENT_UNIT")
+    UNIT_EOF
+    ln -sf ../ssh-agent.service /home/${USERNAME}/.config/systemd/user/default.target.wants/ssh-agent.service
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
+    cat > /etc/profile.d/10-ssh-agent.sh <<'PROFILE_EOF'
+$(indent_lines '    ' "$SSH_AGENT_PROFILE")
+    PROFILE_EOF
+    chmod 644 /etc/profile.d/10-ssh-agent.sh
+    grep -q '10-ssh-agent.sh' /home/${USERNAME}/.bashrc 2>/dev/null || printf '%s\n' '. /etc/profile.d/10-ssh-agent.sh' >> /home/${USERNAME}/.bashrc
+    chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bashrc
+    loginctl enable-linger ${USERNAME} || true
     install -d -o ${USERNAME} -g ${USERNAME} -m 0755 /home/${USERNAME}/repos
 $(indent_lines '    ' "$REPO_LOOP_SNIPPET")
 EOF
@@ -94,7 +147,6 @@ users:
     ssh_authorized_keys:
       - ${SSH_PUB_KEY}
     home: /home/${USERNAME}
-    shell: /bin/bash
 EOF
 }
 
@@ -165,6 +217,12 @@ $(build_shell_block)
   - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, git, config, --global, user.name, "$(yaml_escape "$GIT_NAME")" ]
   - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, git, config, --global, user.email, "$(yaml_escape "$GIT_EMAIL")" ]
   - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, git, config, --global, init.defaultBranch, main ]
+
+  # Force every GitHub interaction over SSH. VS Code Dev Containers copies this
+  # global config into the container, so HTTPS remotes can never fall back to an
+  # interactive credential helper that has no terminal to prompt on.
+  - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, git, config, --global, 'url.git@github.com:.insteadOf', 'https://github.com/' ]
+  - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, git, config, --global, --add, 'url.git@github.com:.insteadOf', 'git://github.com/' ]
 
   - [ sudo, -u, ${USERNAME}, env, HOME=/home/${USERNAME}, byobu-enable ]
 
