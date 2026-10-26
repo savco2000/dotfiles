@@ -40,6 +40,17 @@ packages:
   - byobu
 
 runcmd:
+  - |
+    if [ ! -f /swapfile ]; then
+        fallocate -l 4G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    elif ! swapon --show=NAME --noheadings | grep -qx '/swapfile'; then
+        swapon /swapfile
+    fi
+
   # 1. Safely attach $USERNAME to docker now that the package is installed
   - [ usermod, -aG, docker, $USERNAME ]
   
