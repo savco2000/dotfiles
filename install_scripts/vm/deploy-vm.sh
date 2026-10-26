@@ -1,7 +1,7 @@
 #!/bin/bash
 # Make executable: chmod +x deploy-vm.sh
 # Usage: sudo ./deploy-vm.sh <config.yaml | vm-name> [-m memory_mib] [-c vcpus] [-s disk_gib] [-d] [-f]
-# Default: 4096 MiB RAM, 4 vCPUs, 100 GiB Disk (Linked Clone)
+# Default: 8192 MiB RAM, 4 vCPUs, 100 GiB Disk (Linked Clone)
 
 # --- 1. Dynamic Variables & Defaults ---
 TARGET=$1
@@ -31,7 +31,7 @@ else
     USER_DATA="./${PREFIX}-user-data.yaml"
 fi
 
-MEM=4096
+MEM=8192
 CPUS=4
 DISK=100
 
@@ -58,6 +58,21 @@ while getopts "dfm:c:s:" opt; do
     \?) exit 1 ;;
   esac
 done
+
+if ! [[ "$MEM" =~ ^[0-9]+$ ]] || (( MEM < 2048 )); then
+    echo "❌ Error: Memory must be an integer of at least 2048 MiB."
+    exit 1
+fi
+
+if ! [[ "$CPUS" =~ ^[0-9]+$ ]] || (( CPUS < 1 )); then
+    echo "❌ Error: CPU count must be a positive integer."
+    exit 1
+fi
+
+if ! [[ "$DISK" =~ ^[0-9]+$ ]] || (( DISK < 20 )); then
+    echo "❌ Error: Disk size must be an integer of at least 20 GiB."
+    exit 1
+fi
 
 # --- 3. Internal Paths ---
 LIBVIRT_DIR="/var/lib/libvirt/images"
